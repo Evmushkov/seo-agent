@@ -120,6 +120,12 @@
   .delta.up { color: var(--green); }
   .delta.down { color: var(--red); }
   
+  .model-bar { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; }
+  .model-bar label { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .model-bar select { flex: 1; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--border);
+                      background: var(--card); color: var(--text); font-size: 11px; font-family: inherit; }
+  .model-bar select:focus { outline: none; border-color: var(--accent); }
+  
   .empty { color: var(--muted); font-size: 12px; padding: 30px; text-align: center; }
   .footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--border);
             font-size: 9px; color: var(--dim); text-align: center; }
@@ -149,6 +155,17 @@
     <div class="input-bar">
       <input id="url-input" value="https://tempus.ru/" placeholder="https://example.com/" />
       <button class="btn btn-primary" id="run-btn" onclick="startAudit()">▶ Запустить</button>
+    </div>
+    <div class="model-bar">
+      <label>🧠 Модель:</label>
+      <select id="model-select">
+        <option value="claude-sonnet-4">Claude Sonnet 4 (рекомендуется)</option>
+        <option value="gpt-4o">GPT-4o</option>
+        <option value="gpt-4o-mini">GPT-4o Mini (дешевле)</option>
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+        <option value="deepseek-v3">DeepSeek V3 (самый дешёвый)</option>
+        <option value="claude-haiku">Claude Haiku (быстрый)</option>
+      </select>
     </div>
     <div class="status" id="status" style="display:none"></div>
     <div id="summary" style="display:none"></div>
@@ -288,7 +305,7 @@ async function startAudit() {
     const resp = await fetch(API + '/api/audit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, max_pages: 12 }),
+      body: JSON.stringify({ url, max_pages: 12, model: document.getElementById('model-select').value }),
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || 'Error');

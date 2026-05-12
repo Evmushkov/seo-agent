@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from app.database import init_db, create_report, update_report, get_report, list_reports, delete_report
 from app.crawler import discover_pages, fetch_page_content, classify_page
 from app.analyzer import analyze_content
-from app.ai import suggest_keywords, generate_recommendations, init_client
+from app.ai import suggest_keywords, generate_recommendations, list_models, get_api_key
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await init_db()
     try:
-        init_client()
-        logger.info("Claude API client initialized")
+        get_api_key()
+        logger.info("OpenRouter API key configured")
     except ValueError as e:
-        logger.warning(f"Claude API not configured: {e}")
+        logger.warning(f"API not configured: {e}")
     yield
 
 
@@ -38,6 +38,7 @@ app = FastAPI(title="SEO Content Agent", lifespan=lifespan)
 class AuditRequest(BaseModel):
     url: str
     max_pages: int = 12
+    model: str = "claude-sonnet-4"
 
 
 class AuditStatus(BaseModel):
@@ -46,9 +47,9 @@ class AuditStatus(BaseModel):
 
 
 # ── Background audit task ────────────────────────────────────────────
-async def run_audit(report_id: str, base_url: str, max_pages: int):
+async def run_audit(report_id: str, base_url: str, max_pages: int, model: str):
     try:
-        logger.info(f"[{report_id}] Starting audit for {base_url}")
+        logger.info(f"[{report_id}] Starting audit: {base_url} (model: {model})")
 
         # Step 1: Discover pages
         await update_report(report_id, status="discovering")
@@ -72,18 +73,18 @@ async def run_audit(report_id: str, base_url: str, max_pages: int):
                 content = await fetch_page_content(page_info["url"])
 
                 # AI: suggest keywords
-                keywords = await suggest_keywords(content)
+                keywords = await suggest_keywords(content, model=model)
 
                 # Analyze word frequencies and content quality
                 analysis = analyze_content(content, keywords)
 
                 # AI: generate recommendations
-                recommendations = await generate_recommendations(content, analysis)
+                recommendations = await generate_recommendations(content, analysis, model=model)
 
                 result = {
                     "url": page_info["url"],
                     "title": content.get("title", page_info.get("title", "")),
-                    "type": page_info.get("type", classify_page(page_info["url"], None)),
+                    "type": page_info.get("type", ""),
                     "h1": content.get("h1", ""),
                     "meta_description": content.get("meta_description", ""),
                     "keywords": keywords,
@@ -103,9 +104,8 @@ async def run_audit(report_id: str, base_url: str, max_pages: int):
                 # Save progress
                 avg_score = round(sum(r["content_score"] for r in results) / len(results))
                 await update_report(report_id, pages=results,
-                                    summary={"progress": f"{i+1}/{len(pages)}", "avg_score": avg_score, "analyzed": len(results)})
+                                    summary={"progress": f"{i+1}/{len(pages)}", "avg_score": avg_score, "analyzed": len(results), "model": model})
 
-                # Small delay to avoid rate limits
                 await asyncio.sleep(1)
 
             except Exception as e:
@@ -131,6 +131,7 @@ async def run_audit(report_id: str, base_url: str, max_pages: int):
             "avg_score": avg,
             "good_pages": good,
             "needs_work": bad,
+            "model": model,
         }
 
         await update_report(report_id, status="done", summary=summary, pages=results)
@@ -138,14 +139,12 @@ async def run_audit(report_id: str, base_url: str, max_pages: int):
 
     except Exception as e:
         logger.error(f"[{report_id}] Audit failed: {e}")
-        await update_report(report_id, status="error",
-                            summary={"error": str(e)})
+        await update_report(report_id, status="error", summary={"error": str(e)})
 
 
 # ── API Routes ───────────────────────────────────────────────────────
 @app.post("/api/audit", response_model=AuditStatus)
 async def start_audit(req: AuditRequest, bg: BackgroundTasks):
-    # Validate URL
     parsed = urlparse(req.url)
     if not parsed.scheme or not parsed.netloc:
         raise HTTPException(400, "Invalid URL")
@@ -154,7 +153,7 @@ async def start_audit(req: AuditRequest, bg: BackgroundTasks):
     report_id = str(uuid.uuid4())[:8]
 
     await create_report(report_id, domain, req.url)
-    bg.add_task(run_audit, report_id, req.url, req.max_pages)
+    bg.add_task(run_audit, report_id, req.url, req.max_pages, req.model)
 
     return AuditStatus(report_id=report_id, status="started")
 
@@ -176,6 +175,11 @@ async def list_reports_api(domain: str = None):
 async def delete_report_api(report_id: str):
     await delete_report(report_id)
     return {"ok": True}
+
+
+@app.get("/api/models")
+async def get_models():
+    return list_models()
 
 
 # ── Serve frontend ──────────────────────────────────────────────────
