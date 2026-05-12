@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEO Content Agent</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
+  
+  :root {
+    --bg: #0c0f14; --card: #161b24; --border: #1e2533;
+    --accent: #4f8cff; --green: #2dd4a0; --orange: #f59e42;
+    --red: #ff6b6b; --text: #e2e8f0; --muted: #7a8599; --dim: #3a4558;
+  }
+  
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'JetBrains Mono', monospace; background: var(--bg); color: var(--text); padding: 24px 16px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  
+  h1 { font-size: 20px; font-weight: 700; }
+  .sub { font-size: 11px; color: var(--muted); }
+  
+  .header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .header-icon { font-size: 28px; }
+  
+  /* Tabs */
+  .tabs { display: flex; gap: 6px; margin-bottom: 18px; }
+  .tab { padding: 6px 14px; font-size: 11px; font-family: inherit; border: 1px solid transparent;
+         border-radius: 6px; cursor: pointer; background: transparent; color: var(--muted); }
+  .tab.active { color: var(--accent); background: rgba(79,140,255,.1); border-color: rgba(79,140,255,.25); font-weight: 700; }
+  
+  /* Input bar */
+  .input-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+  .input-bar input { flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border);
+                     background: var(--card); color: var(--text); font-size: 12px; font-family: inherit; }
+  .input-bar input:focus { outline: none; border-color: var(--accent); }
+  .btn { padding: 10px 20px; border-radius: 8px; border: none; font-size: 12px; font-weight: 600;
+         font-family: inherit; cursor: pointer; white-space: nowrap; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); font-size: 10px; padding: 4px 10px; }
+  .btn-outline-red { background: transparent; border: 1px solid var(--red); color: var(--red); font-size: 10px; padding: 4px 10px; }
+  
+  /* Status */
+  .status { padding: 10px 14px; border-radius: 8px; background: rgba(79,140,255,.07);
+            border: 1px solid rgba(79,140,255,.18); margin-bottom: 16px; font-size: 11px; color: var(--accent); }
+  .status .spin { display: inline-block; animation: spin 1s linear infinite; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  
+  /* Summary */
+  .summary { display: flex; gap: 16px; padding: 16px; background: var(--card);
+             border-radius: 10px; border: 1px solid var(--border); margin-bottom: 18px; align-items: center; }
+  .summary-stats { flex: 1; font-size: 11px; color: var(--muted); line-height: 1.9; }
+  .summary-stats b { color: var(--text); }
+  .summary-stats .good { color: var(--green); }
+  .summary-stats .bad { color: var(--red); }
+  
+  /* Score ring */
+  .ring { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .ring-circle { border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                 font-weight: 700; border-width: 3px; border-style: solid; }
+  .ring-label { font-size: 9px; color: var(--muted); text-align: center; }
+  
+  /* Page card */
+  .page-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+               padding: 16px; margin-bottom: 10px; }
+  .page-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  .page-title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page-url { font-size: 10px; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page-type { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .page-right { display: flex; align-items: center; gap: 10px; margin-left: 12px; flex-shrink: 0; }
+  .page-details { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px; display: none; }
+  .page-card.open .page-details { display: block; }
+  .toggle { color: var(--dim); font-size: 16px; }
+  
+  /* Keywords */
+  .kw-label { font-size: 11px; font-weight: 600; color: var(--orange); margin-bottom: 6px; }
+  .kw-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+  .kw { font-size: 10px; padding: 2px 8px; border-radius: 12px; }
+  .kw.found { background: rgba(245,158,66,.12); color: var(--orange); border: 1px solid rgba(245,158,66,.25); }
+  .kw.missing { background: rgba(255,107,107,.1); color: var(--red); border: 1px solid rgba(255,107,107,.2); }
+  
+  /* Chart */
+  .chart-wrap { overflow-x: auto; margin-top: 12px; }
+  .chart { display: flex; gap: 2px; align-items: flex-end; height: 160px; }
+  .bar-col { display: flex; flex-direction: column; align-items: center; flex: 0 0 40px;
+             position: relative; height: 100%; justify-content: flex-end; }
+  .bar { width: 22px; border-radius: 3px 3px 0 0; transition: height .3s; }
+  .bar.kw { background: var(--orange); }
+  .bar.normal { background: var(--green); opacity: .65; }
+  .bar-freq { font-size: 9px; color: var(--muted); margin-bottom: 1px; }
+  .bar-word { font-size: 8px; margin-top: 3px; transform: rotate(-50deg); transform-origin: top left;
+              white-space: nowrap; }
+  .bar-word.kw { color: var(--orange); }
+  .bar-word.normal { color: var(--muted); }
+  .zipf-dot { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); opacity: .4; }
+  .chart-legend { display: flex; gap: 14px; margin-top: 28px; font-size: 10px; color: var(--muted); }
+  .legend-sq { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 3px; vertical-align: middle; }
+  .legend-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
+  
+  /* Recommendations */
+  .rec-label { font-size: 11px; font-weight: 600; color: var(--accent); margin: 14px 0 6px; }
+  .rec-text { font-size: 11px; color: var(--text); line-height: 1.7; white-space: pre-wrap; }
+  
+  /* History */
+  .report-row { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+                padding: 14px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+  .report-info { font-size: 12px; font-weight: 600; }
+  .report-meta { font-size: 10px; color: var(--muted); }
+  .report-actions { display: flex; gap: 8px; align-items: center; }
+  
+  /* Compare */
+  .compare-selects { display: flex; gap: 10px; margin-bottom: 18px; }
+  .compare-selects select { flex: 1; padding: 8px; border-radius: 7px; border: 1px solid var(--border);
+                            background: var(--card); color: var(--text); font-size: 11px; font-family: inherit; }
+  .compare-summary { display: flex; gap: 14px; justify-content: center; align-items: center;
+                     padding: 16px; background: var(--card); border-radius: 10px; border: 1px solid var(--border); margin-bottom: 18px; }
+  .compare-arrow { font-size: 20px; color: var(--muted); }
+  .delta { font-size: 11px; font-weight: 600; }
+  .delta.up { color: var(--green); }
+  .delta.down { color: var(--red); }
+  
+  .empty { color: var(--muted); font-size: 12px; padding: 30px; text-align: center; }
+  .footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--border);
+            font-size: 9px; color: var(--dim); text-align: center; }
+  
+  /* Log */
+  details { margin-top: 16px; }
+  summary { font-size: 11px; color: var(--muted); cursor: pointer; }
+  .log { background: var(--card); border: 1px solid var(--border); border-radius: 7px;
+         padding: 10px; max-height: 180px; overflow-y: auto; font-size: 10px; color: var(--muted); line-height: 1.8; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="header">
+    <span class="header-icon">🤖</span>
+    <div><h1>SEO Content Agent</h1><div class="sub">AI-аудит контента · автономный агент</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="agent" onclick="switchTab('agent')">▶ Аудит</button>
+    <button class="tab" data-tab="history" onclick="switchTab('history')">📁 Отчёты</button>
+    <button class="tab" data-tab="compare" onclick="switchTab('compare')">⚖ Сравнение</button>
+  </div>
+
+  <!-- AUDIT TAB -->
+  <div id="tab-agent">
+    <div class="input-bar">
+      <input id="url-input" value="https://tempus.ru/" placeholder="https://example.com/" />
+      <button class="btn btn-primary" id="run-btn" onclick="startAudit()">▶ Запустить</button>
+    </div>
+    <div class="status" id="status" style="display:none"></div>
+    <div id="summary" style="display:none"></div>
+    <div id="pages"></div>
+    <details id="log-section" style="display:none">
+      <summary>📜 Лог агента</summary>
+      <div class="log" id="log"></div>
+    </details>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div id="tab-history" style="display:none">
+    <div id="history-list"></div>
+  </div>
+
+  <!-- COMPARE TAB -->
+  <div id="tab-compare" style="display:none">
+    <div class="compare-selects">
+      <select id="cmp-a"><option value="">— До (старый) —</option></select>
+      <select id="cmp-b"><option value="">— После (новый) —</option></select>
+    </div>
+    <div id="compare-result"></div>
+  </div>
+
+  <div class="footer">SEO Content Agent · отчёты сохраняются на сервере · сравнивайте до/после</div>
+</div>
+
+<script>
+const API = '';
+let currentReport = null;
+let allReports = [];
+let pollTimer = null;
+
+// ── Tabs ──
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  ['agent','history','compare'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === name ? 'block' : 'none';
+  });
+  if (name === 'history') loadHistory();
+  if (name === 'compare') loadCompare();
+}
+
+// ── Score ring HTML ──
+function ringHTML(value, label, size = 48) {
+  const c = value >= 60 ? 'var(--green)' : value >= 30 ? 'var(--orange)' : 'var(--red)';
+  return `<div class="ring">
+    <div class="ring-circle" style="width:${size}px;height:${size}px;border-color:${c};font-size:${size*.36}px;color:${c}">${value}</div>
+    <div class="ring-label">${label}</div></div>`;
+}
+
+function deltaHTML(prev, curr) {
+  if (prev == null) return '';
+  const d = curr - prev;
+  if (d === 0) return '<span class="delta" style="color:var(--muted)">→ 0</span>';
+  return `<span class="delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`;
+}
+
+// ── Chart HTML ──
+function chartHTML(words, keywords) {
+  if (!words || !words.length) return '';
+  const top = words.slice(0, 20);
+  const maxF = top[0][1];
+  const kwSet = new Set((keywords || []).map(k => k.toLowerCase()));
+  const isKw = w => [...kwSet].some(k => w.includes(k) || k.includes(w));
+
+  let bars = top.map(([w, f], i) => {
+    const h = (f / maxF) * 140;
+    const ih = Math.min(((maxF / (i + 1)) / maxF) * 140, 140);
+    const kw = isKw(w);
+    return `<div class="bar-col">
+      <div class="zipf-dot" style="bottom:${ih + 22}px"></div>
+      <span class="bar-freq">${f}</span>
+      <div class="bar ${kw ? 'kw' : 'normal'}" style="height:${h}px"></div>
+      <span class="bar-word ${kw ? 'kw' : 'normal'}">${w}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="chart-wrap"><div class="chart">${bars}</div>
+    <div class="chart-legend">
+      <span><i class="legend-sq" style="background:var(--green)"></i>Слова</span>
+      <span><i class="legend-sq" style="background:var(--orange)"></i>Ключевые</span>
+      <span><i class="legend-dot" style="background:var(--muted)"></i>Ципф</span>
+    </div></div>`;
+}
+
+// ── Page card HTML ──
+function pageCardHTML(pg, prevPg) {
+  const score = pg.content_score || 0;
+  const prevScore = prevPg ? (prevPg.content_score || 0) : null;
+  const id = 'pg-' + btoa(pg.url).replace(/[^a-z0-9]/gi, '').slice(0, 12);
+
+  const kwHTML = (pg.keywords || []).map(kw => {
+    const pr = pg.keyword_presence || {};
+    const found = pr[kw] ? pr[kw].found : false;
+    return `<span class="kw ${found ? 'found' : 'missing'}">${kw} ${found ? '✓' : '✗'}</span>`;
+  }).join('');
+
+  return `<div class="page-card" id="${id}">
+    <div class="page-header" onclick="document.getElementById('${id}').classList.toggle('open')">
+      <div style="flex:1;min-width:0">
+        <div class="page-title">${pg.title || pg.url}</div>
+        <div class="page-url">${pg.url}</div>
+        <div class="page-type">${pg.type || ''}</div>
+      </div>
+      <div class="page-right">
+        ${ringHTML(score, 'Контент', 42)}
+        ${deltaHTML(prevScore, score)}
+        <span class="toggle">▼</span>
+      </div>
+    </div>
+    <div class="page-details">
+      <div class="kw-label">Ключевые слова:</div>
+      <div class="kw-list">${kwHTML}</div>
+      ${chartHTML(pg.top_words, pg.keywords)}
+      ${pg.recommendations ? `<div class="rec-label">Рекомендации:</div><div class="rec-text">${pg.recommendations}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ── Audit ──
+async function startAudit() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) return;
+
+  const btn = document.getElementById('run-btn');
+  btn.textContent = '⏳ Работаю…';
+  btn.disabled = true;
+  showStatus('🔍 Запускаю аудит…', true);
+  document.getElementById('pages').innerHTML = '';
+  document.getElementById('summary').style.display = 'none';
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('log-section').style.display = 'block';
+  addLog('Отправляю запрос на анализ ' + url);
+
+  try {
+    const resp = await fetch(API + '/api/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, max_pages: 12 }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Error');
+
+    currentReport = data.report_id;
+    addLog('Аудит запущен, ID: ' + data.report_id);
+    pollReport();
+  } catch (e) {
+    showStatus('❌ ' + e.message, false);
+    btn.textContent = '▶ Запустить';
+    btn.disabled = false;
+  }
+}
+
+async function pollReport() {
+  if (!currentReport) return;
+  try {
+    const resp = await fetch(API + '/api/report/' + currentReport);
+    const data = await resp.json();
+
+    if (data.status === 'discovering') {
+      showStatus('🔍 Ищу страницы на сайте…', true);
+    } else if (data.status === 'analyzing') {
+      const p = data.summary?.progress || '';
+      showStatus(`📊 Анализирую страницы… ${p}`, true);
+    } else if (data.status === 'done') {
+      showStatus(`✅ Готово! Проанализировано ${data.summary?.analyzed || 0} страниц`, false);
+      renderReport(data);
+      document.getElementById('run-btn').textContent = '▶ Запустить';
+      document.getElementById('run-btn').disabled = false;
+      return;
+    } else if (data.status === 'error') {
+      showStatus('❌ ' + (data.summary?.error || 'Unknown error'), false);
+      document.getElementById('run-btn').textContent = '▶ Запустить';
+      document.getElementById('run-btn').disabled = false;
+      return;
+    }
+
+    // Render partial results
+    if (data.pages && data.pages.length) {
+      renderPages(data.pages);
+      addLog(`Обработано: ${data.pages.length} страниц`);
+    }
+    if (data.summary?.avg_score != null) {
+      renderSummary(data.summary, data.pages);
+    }
+
+    pollTimer = setTimeout(pollReport, 3000);
+  } catch (e) {
+    pollTimer = setTimeout(pollReport, 5000);
+  }
+}
+
+function renderReport(data) {
+  renderSummary(data.summary, data.pages);
+  renderPages(data.pages);
+  addLog('Аудит завершён. Средний балл: ' + (data.summary?.avg_score || 0));
+}
+
+function renderSummary(summary, pages) {
+  const s = summary;
+  const el = document.getElementById('summary');
+  el.style.display = 'flex';
+  el.className = 'summary';
+  el.innerHTML = `
+    ${ringHTML(s.avg_score || 0, 'Средний балл', 52)}
+    <div class="summary-stats">
+      <div>Страниц: <b>${s.total_pages || s.analyzed || (pages||[]).length}</b></div>
+      <div>Хороший контент: <b class="good">${s.good_pages || 0}</b></div>
+      <div>Нужна доработка: <b class="bad">${s.needs_work || 0}</b></div>
+    </div>`;
+}
+
+function renderPages(pages) {
+  document.getElementById('pages').innerHTML = pages.map(pg =>
+    pg.error ? '' : pageCardHTML(pg)
+  ).join('');
+}
+
+// ── History ──
+async function loadHistory() {
+  try {
+    const resp = await fetch(API + '/api/reports');
+    allReports = await resp.json();
+  } catch { allReports = []; }
+
+  const el = document.getElementById('history-list');
+  if (!allReports.length) {
+    el.innerHTML = '<div class="empty">Пока нет отчётов. Запустите аудит на вкладке «▶ Аудит».</div>';
+    return;
+  }
+
+  el.innerHTML = allReports.map(r => `
+    <div class="report-row">
+      <div>
+        <div class="report-info">${r.domain}</div>
+        <div class="report-meta">${fmtDate(r.created_at)} · ${r.summary?.analyzed || r.summary?.total_pages || '?'} стр. · ${r.status}</div>
+      </div>
+      <div class="report-actions">
+        ${ringHTML(r.summary?.avg_score || 0, '', 36)}
+        <button class="btn-outline" onclick="openReport('${r.id}')">Открыть</button>
+        <button class="btn-outline-red" onclick="deleteRep('${r.id}')">✗</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function openReport(id) {
+  const resp = await fetch(API + '/api/report/' + id);
+  const data = await resp.json();
+  switchTab('agent');
+  showStatus(`📂 Отчёт от ${fmtDate(data.created_at)}`, false);
+  renderReport(data);
+}
+
+async function deleteRep(id) {
+  await fetch(API + '/api/report/' + id, { method: 'DELETE' });
+  loadHistory();
+}
+
+// ── Compare ──
+async function loadCompare() {
+  try {
+    const resp = await fetch(API + '/api/reports');
+    allReports = await resp.json();
+  } catch { allReports = []; }
+
+  const el = document.getElementById('compare-result');
+  if (allReports.length < 2) {
+    el.innerHTML = '<div class="empty">Нужно минимум 2 отчёта для сравнения.</div>';
+    return;
+  }
+
+  ['cmp-a', 'cmp-b'].forEach(id => {
+    const sel = document.getElementById(id);
+    const val = sel.value;
+    sel.innerHTML = `<option value="">${id === 'cmp-a' ? '— До —' : '— После —'}</option>` +
+      allReports.map(r => `<option value="${r.id}">${fmtDate(r.created_at)} · ${r.domain} · ${r.summary?.avg_score || 0}%</option>`).join('');
+    sel.value = val;
+    sel.onchange = runCompare;
+  });
+}
+
+async function runCompare() {
+  const aId = document.getElementById('cmp-a').value;
+  const bId = document.getElementById('cmp-b').value;
+  const el = document.getElementById('compare-result');
+  if (!aId || !bId) { el.innerHTML = ''; return; }
+
+  const [ra, rb] = await Promise.all([
+    fetch(API + '/api/report/' + aId).then(r => r.json()),
+    fetch(API + '/api/report/' + bId).then(r => r.json()),
+  ]);
+
+  const sa = ra.summary?.avg_score || 0;
+  const sb = rb.summary?.avg_score || 0;
+
+  let html = `<div class="compare-summary">
+    ${ringHTML(sa, fmtDate(ra.created_at), 50)}
+    <span class="compare-arrow">→</span>
+    ${ringHTML(sb, fmtDate(rb.created_at), 50)}
+    <div style="margin-left:16px">${deltaHTML(sa, sb)}<div style="font-size:10px;color:var(--muted);margin-top:2px">общий балл</div></div>
+  </div>`;
+
+  html += (rb.pages || []).map(pg => {
+    const prev = (ra.pages || []).find(p => p.url === pg.url);
+    return pg.error ? '' : pageCardHTML(pg, prev);
+  }).join('');
+
+  el.innerHTML = html;
+}
+
+// ── Helpers ──
+function showStatus(msg, spinning) {
+  const el = document.getElementById('status');
+  el.style.display = 'block';
+  el.innerHTML = (spinning ? '<span class="spin">⟳</span>' : '') + msg;
+}
+
+function addLog(msg) {
+  const el = document.getElementById('log');
+  el.innerHTML += new Date().toLocaleTimeString() + ' — ' + msg + '<br>';
+  el.scrollTop = el.scrollHeight;
+}
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+</script>
+</body>
+</html>
