@@ -39,7 +39,7 @@ def init_db():
             upload_id       VARCHAR,
             source          VARCHAR NOT NULL,
             date            DATE,
-            query           VARCHAR NOT NULL,
+            query           VARCHAR,
             url             VARCHAR,
             region          VARCHAR,
             platform        VARCHAR,

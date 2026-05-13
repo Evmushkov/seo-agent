@@ -1,6 +1,0 @@
-__pycache__/
-*.pyc
-.env
-*.duckdb
-*.duckdb.wal
-.DS_Store

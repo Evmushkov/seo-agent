@@ -44,8 +44,8 @@ class GSCImporter(BaseImporter):
 
         if pages:
             conn.executemany(
-                "INSERT INTO search_queries (upload_id,source,url,region,platform,search_engine,clicks,shows,ctr,position) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                [(self.upload_id, self.source, p["page"], self.region, self.platform, "google", p["clicks"], p["impressions"], p["ctr"], p["position"]) for p in pages]
+                "INSERT INTO search_queries (upload_id,source,query,url,region,platform,search_engine,clicks,shows,ctr,position) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                [(self.upload_id, self.source, p["page"], p["page"], self.region, self.platform, "google", p["clicks"], p["impressions"], p["ctr"], p["position"]) for p in pages]
             )
             total += len(pages)
 

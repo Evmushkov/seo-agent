@@ -27,8 +27,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     init_db()
     init_default_tags()
-    # Auto-import files from data/ on startup
-    auto_import_data()
+    # Auto-import in background thread (don't block startup)
+    import threading
+    t = threading.Thread(target=auto_import_data, daemon=True)
+    t.start()
     yield
 
 
@@ -59,6 +61,9 @@ def auto_import_data():
         for f in sorted(glob.glob(os.path.join(path, "*"))):
             fname = os.path.basename(f)
             if fname in existing or fname.startswith("."):
+                continue
+            # Skip irrelevant GSC files
+            if subdir == "gsc" and fname not in ("Queries.csv", "Pages.csv") and not fname.endswith(".zip"):
                 continue
             try:
                 # Detect region/platform from filename
