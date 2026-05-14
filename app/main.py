@@ -402,7 +402,7 @@ async def dashboard():
         SELECT t.id, t.name, t.icon, COUNT(qt.query) as cnt
         FROM tags t LEFT JOIN query_tags qt ON t.id = qt.tag_id
         WHERE t.is_active = true
-        GROUP BY t.id, t.name, t.icon
+        GROUP BY t.id, t.name, t.icon, t.sort_order
         ORDER BY t.sort_order
     """)
 
