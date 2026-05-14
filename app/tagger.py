@@ -152,11 +152,22 @@ def _compute_tag(tag_id: str, formula: dict) -> int:
         conn = get_conn()
         results = conn.execute(final_sql).fetchall()
         if results:
+            # Dedupe: один тег на запрос, независимо от количества URL.
+            # До этого: запрос с N URL получал тег N раз (или N×M при AND-логике),
+            # из-за чего каунтеры тегов на дашборде завышались в разы.
+            seen: set = set()
+            deduped = []
+            for r in results:
+                if r[0] in seen:
+                    continue
+                seen.add(r[0])
+                deduped.append((r[0], None, tag_id, "computed"))
             conn.executemany(
                 "INSERT INTO query_tags (query, url, tag_id, source) VALUES (?, ?, ?, ?)",
-                [(r[0], r[1], tag_id, "computed") for r in results]
+                deduped
             )
-        return len(results)
+            return len(deduped)
+        return 0
     except Exception as e:
         logger.error(f"Tag {tag_id} computation failed: {e}")
         return 0
