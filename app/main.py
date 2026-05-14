@@ -2,6 +2,7 @@ import os
 import json
 import glob
 import logging
+from datetime import datetime
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
@@ -21,6 +22,13 @@ from app.importers.direct import DirectImporter
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ── Import status (для фронта — показывать спиннер пока идёт импорт) ─
+_import_status = {"running": False, "phase": None, "started_at": None}
+
+
+def _set_status(**kw):
+    _import_status.update(kw)
 
 
 @asynccontextmanager
@@ -47,6 +55,7 @@ def auto_import_data():
     # Check which files are already imported
     existing = {r[0] for r in query("SELECT filename FROM uploads")}
 
+    _set_status(running=True, phase="scanning", started_at=datetime.utcnow().isoformat())
     imported = 0
     for subdir, importer_class, kwargs in [
         ("gsc", GSCImporter, {}),
@@ -77,9 +86,12 @@ def auto_import_data():
 
     if imported:
         logger.info(f"Auto-imported {imported} files. Computing tags...")
+        _set_status(phase="computing_tags")
         compute_all_tags()
+        _set_status(running=False, phase="done")
     else:
         logger.info("No new files to import")
+        _set_status(running=False, phase="done")
 
 
 def _detect_meta_from_filename(fname: str, source: str) -> dict:
@@ -266,28 +278,82 @@ async def get_queries(region: str = None, platform: str = None, search_engine: s
     return {"queries": results, "total": total, "limit": limit, "offset": offset}
 
 
+@app.get("/api/status")
+async def get_status():
+    """Статус фонового импорта — фронт поллит раз в 3 сек."""
+    return _import_status
+
+
 # ── API: Cannibalization ─────────────────────────────────────────────
 @app.get("/api/cannibalization")
-async def get_cannibalization(limit: int = 50):
-    rows = query("""
-        SELECT query, url, SUM(clicks) as clicks, AVG(position) as pos
+async def get_cannibalization(limit: int = 50, offset: int = 0, q: str = None):
+    """
+    Используем query_tags как единственный источник истины —
+    тогда счётчик тега «Каннибал» и счётчик на вкладке всегда совпадают.
+    """
+    # Total = кол-во уникальных запросов в query_tags с tag_id='cannibal'
+    q_filter = ""
+    params: list = []
+    if q:
+        q_filter = "AND qt.query ILIKE ?"
+        params.append(f"%{q}%")
+
+    total = query(
+        f"SELECT COUNT(DISTINCT qt.query) FROM query_tags qt WHERE qt.tag_id = 'cannibal' {q_filter}",
+        params
+    )[0][0]
+
+    if total == 0:
+        return {"cannibalization": [], "total": 0, "limit": limit, "offset": offset}
+
+    # Страница запросов, отсортированных по кликам
+    page_queries = query(f"""
+        SELECT qt.query,
+               COALESCE(SUM(sq.clicks), 0) AS total_clicks,
+               COUNT(DISTINCT sq.url)       AS url_count
+        FROM query_tags qt
+        LEFT JOIN search_queries sq
+               ON sq.query = qt.query
+              AND sq.source = 'webmaster'
+              AND sq.url IS NOT NULL AND sq.url != ''
+        WHERE qt.tag_id = 'cannibal' {q_filter}
+        GROUP BY qt.query
+        ORDER BY total_clicks DESC, qt.query
+        LIMIT ? OFFSET ?
+    """, params + [limit, offset])
+
+    if not page_queries:
+        return {"cannibalization": [], "total": total, "limit": limit, "offset": offset}
+
+    query_names = [r[0] for r in page_queries]
+    placeholders = ",".join(["?"] * len(query_names))
+
+    url_rows = query(f"""
+        SELECT query, url,
+               SUM(clicks)   AS clicks,
+               SUM(shows)    AS shows,
+               AVG(position) AS pos
         FROM search_queries
-        WHERE source = 'webmaster' AND url IS NOT NULL AND url != ''
-          AND query IN (
-            SELECT query FROM search_queries WHERE source = 'webmaster' AND url IS NOT NULL AND url != ''
-            GROUP BY query HAVING COUNT(DISTINCT url) >= 2
-          )
+        WHERE source = 'webmaster'
+          AND url IS NOT NULL AND url != ''
+          AND query IN ({placeholders})
         GROUP BY query, url
-        ORDER BY query, clicks DESC
-        LIMIT ?
-    """, [limit * 5])
+        ORDER BY clicks DESC NULLS LAST
+    """, query_names)
 
-    groups = {}
-    for q, url, clicks, pos in rows:
-        groups.setdefault(q, []).append({"url": url, "clicks": clicks, "position": round(pos, 1)})
+    groups: dict = {}
+    for q_name, url, clicks, shows, pos in url_rows:
+        groups.setdefault(q_name, []).append({
+            "url": url, "clicks": int(clicks or 0),
+            "shows": int(shows or 0), "position": round(pos, 1) if pos else 0,
+        })
 
-    result = [{"query": q, "urls": urls} for q, urls in list(groups.items())[:limit]]
-    return {"cannibalization": result, "total": len(groups)}
+    result = [
+        {"query": q_name, "total_clicks": int(tc or 0),
+         "url_count": int(uc), "urls": groups.get(q_name, [])}
+        for q_name, tc, uc in page_queries
+    ]
+    return {"cannibalization": result, "total": total, "limit": limit, "offset": offset}
 
 
 # ── API: Tags ────────────────────────────────────────────────────────

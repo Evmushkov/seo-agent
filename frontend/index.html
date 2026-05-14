@@ -81,31 +81,101 @@ function go(t){
 
 // ── Dashboard ──
 async function loadDash(){
-  const d=await(await fetch(A+'/api/dashboard')).json();
   const el=document.getElementById('p-dash');
+  el.innerHTML=`<div class="empty">⟳ Загружаю...</div>`;
+  let d;
+  try{
+    const r=await fetch(A+'/api/dashboard');
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    d=await r.json();
+  }catch(e){
+    el.innerHTML=`<div class="card" style="border-color:var(--red)"><div style="color:var(--red);font-weight:600;margin-bottom:4px">⚠️ Ошибка загрузки дашборда</div><div style="font-size:11px;color:var(--muted)">${e.message}</div></div>`;
+    return;
+  }
 
   const srcNames={gsc:'Google Search Console',webmaster:'Яндекс.Вебмастер',metrika:'Яндекс.Метрика',topvisor:'TopVisor',direct:'Яндекс.Директ'};
-  const srcHTML=d.sources.map(s=>{
-    const age=Math.round((Date.now()-new Date(s.last_update))/86400000);
-    const fresh=age<=7?'color:var(--green)':age<=14?'color:var(--orange)':'color:var(--red)';
-    return `<div class="src"><div><div class="src-name">${srcNames[s.source]||s.source}</div><div class="src-info">${(s.rows||0).toLocaleString()} записей</div></div><span class="src-fresh" style="${fresh}">${age===0?'сегодня':age+' дн. назад'}</span></div>`;
+  const srcHTML=(d.sources||[]).map(s=>{
+    const ts=s.last_update&&s.last_update!=='None'?new Date(s.last_update):null;
+    const age=ts?Math.round((Date.now()-ts)/86400000):null;
+    const fresh=age===null?'color:var(--muted)':age<=7?'color:var(--green)':age<=14?'color:var(--orange)':'color:var(--red)';
+    const ageStr=age===null?'неизвестно':age===0?'сегодня':age+' дн. назад';
+    return `<div class="src"><div><div class="src-name">${srcNames[s.source]||s.source}</div><div class="src-info">${(s.rows||0).toLocaleString()} записей</div></div><span class="src-fresh" style="${fresh}">${ageStr}</span></div>`;
   }).join('');
 
-  const tagHTML=d.tags.map(t=>`<span class="tag-chip" onclick="go('queries');curTag='${t.id}';loadQueries()">${t.icon} ${t.name} <span class="cnt">${t.count}</span></span>`).join('');
-
-  const topHTML=d.top_queries.map(q=>`<tr><td class="q">${q.query}</td><td>${q.clicks}</td><td>${q.position}</td></tr>`).join('');
+  const tagHTML=(d.tags||[]).map(t=>`<span class="tag-chip" onclick="go('queries');curTag='${t.id}';loadQueries()">${t.icon} ${t.name} <span class="cnt">${t.count}</span></span>`).join('');
+  const topHTML=(d.top_queries||[]).map(q=>`<tr><td class="q">${q.query}</td><td>${q.clicks}</td><td>${q.position}</td></tr>`).join('');
+  const allZero=d.tags&&d.tags.length>0&&d.tags.every(t=>t.count===0);
 
   el.innerHTML=`
+    ${allZero?`<div class="card" style="border-color:var(--orange);background:rgba(245,158,66,.06);margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-size:12px;font-weight:600;color:var(--orange)">⚠️ Теги не рассчитаны</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Импорт мог ещё не завершиться, или требуется пересчёт</div></div>
+        <button class="btn btn-sm btn-outline" onclick="recomputeTags(this)">↻ Пересчитать</button>
+      </div></div>`:''}
     <div class="row" style="margin-bottom:12px">
       <div class="card stat"><div class="v">${(d.total_queries||0).toLocaleString()}</div><div class="l">запросов</div></div>
       <div class="card stat"><div class="v">${(d.total_pages||0).toLocaleString()}</div><div class="l">страниц</div></div>
-      <div class="card stat"><div class="v">${d.sources.length}</div><div class="l">источников</div></div>
+      <div class="card stat"><div class="v">${(d.sources||[]).length}</div><div class="l">источников</div></div>
     </div>
-    <div class="card"><div style="font-size:12px;font-weight:600;margin-bottom:8px">📡 Источники данных</div>${srcHTML||'<div class="empty">Нет данных. Загрузите файлы на вкладке «📂 Загрузка»</div>'}</div>
-    <div class="card"><div style="font-size:12px;font-weight:600;margin-bottom:8px">🏷️ Теги</div><div>${tagHTML||'<div class="empty">Теги появятся после загрузки данных</div>'}</div></div>
+    <div class="card"><div style="font-size:12px;font-weight:600;margin-bottom:8px">📡 Источники данных</div>${srcHTML||'<div class="empty">Нет данных</div>'}</div>
+    <div class="card" id="tags-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600">🏷️ Теги</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span id="import-status-badge"></span>
+          <button class="btn btn-sm btn-outline" onclick="recomputeTags(this)">↻ Пересчитать</button>
+        </div>
+      </div>
+      <div>${tagHTML||'<div class="empty">Теги появятся после загрузки данных</div>'}</div>
+    </div>
     <div class="card"><div style="font-size:12px;font-weight:600;margin-bottom:8px">🔝 Топ запросов по кликам</div>
       <table><tr><th>Запрос</th><th>Клики</th><th>Позиция</th></tr>${topHTML||'<tr><td colspan=3 class="empty">Нет данных</td></tr>'}</table>
     </div>`;
+
+  // Начинаем поллинг статуса импорта
+  startStatusPolling();
+}
+}
+
+async function recomputeTags(btn){
+  if(btn){btn.disabled=true;btn.textContent='⟳ Считаю...';}
+  try{
+    const r=await fetch(A+'/api/import/recompute-tags',{method:'POST'});
+    const d=await r.json();
+    if(btn){btn.textContent=`✓ ${d.tags_computed} тегов`;}
+    setTimeout(loadDash,800);
+  }catch(e){
+    if(btn){btn.disabled=false;btn.textContent='↻ Пересчитать';}
+    alert('Ошибка: '+e.message);
+  }
+}
+
+let _statusPollTimer=null;
+async function startStatusPolling(){
+  stopStatusPolling();
+  await pollStatus();
+}
+function stopStatusPolling(){
+  if(_statusPollTimer){clearTimeout(_statusPollTimer);_statusPollTimer=null;}
+}
+async function pollStatus(){
+  try{
+    const s=await(await fetch(A+'/api/status')).json();
+    const badge=document.getElementById('import-status-badge');
+    if(!badge)return; // вкладка закрыта
+    if(s.running){
+      const phase={scanning:'сканирую файлы',computing_tags:'считаю теги'}[s.phase]||s.phase||'импорт';
+      badge.innerHTML=`<span style="font-size:10px;color:var(--orange)">⟳ ${phase}...</span>`;
+      _statusPollTimer=setTimeout(pollStatus,3000);
+    }else if(s.phase==='computing_tags'||s.phase==='done'){
+      badge.innerHTML=`<span style="font-size:10px;color:var(--green)">✓ готово</span>`;
+      // Перезагрузить дашборд чтобы показать свежие каунтеры
+      setTimeout(loadDash,1000);
+    }else{
+      badge.innerHTML='';
+    }
+  }catch(e){/* тихо игнорируем */}
 }
 
 // ── Queries ──
@@ -154,16 +224,34 @@ async function loadQueries(){
 }
 
 // ── Cannibalization ──
+let canniPage=0;
 async function loadCannibal(){
-  const d=await(await fetch(A+'/api/cannibalization?limit=50')).json();
   const el=document.getElementById('p-cannibal');
+  const limit=50;
+  el.innerHTML=`<div class="empty">⟳ Загружаю...</div>`;
+  let d;
+  try{
+    const r=await fetch(A+`/api/cannibalization?limit=${limit}&offset=${canniPage*limit}`);
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    d=await r.json();
+  }catch(e){
+    el.innerHTML=`<div class="card" style="border-color:var(--red)"><div style="color:var(--red)">${e.message}</div></div>`;
+    return;
+  }
 
-  const rows=d.cannibalization.map(c=>{
+  const totalPages=Math.max(1,Math.ceil(d.total/limit));
+  const rows=(d.cannibalization||[]).map(c=>{
     const urls=c.urls.map(u=>`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)"><span class="u" style="max-width:400px">${u.url}</span><span style="font-size:10px;color:var(--muted)">клики: ${u.clicks} · поз: ${u.position}</span></div>`).join('');
-    return `<div class="card"><div style="font-size:12px;font-weight:600;margin-bottom:6px">⚔️ «${c.query}» <span style="font-size:10px;color:var(--red)">${c.urls.length} URL</span></div>${urls}</div>`;
+    return `<div class="card"><div style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;justify-content:space-between"><span>⚔️ «${c.query}» <span style="color:var(--red);font-size:10px">${c.url_count} URL</span></span><span style="font-size:10px;color:var(--muted);font-weight:400">Σ ${c.total_clicks} кликов</span></div>${urls}</div>`;
   }).join('');
 
-  el.innerHTML=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Запросы, по которым ранжируются 2+ страницы (${d.total} найдено)</div>${rows||'<div class="empty">Каннибализация не обнаружена</div>'}`;
+  const pager=d.total>limit?`<div class="pager">
+    ${canniPage>0?`<button class="btn btn-sm btn-outline" onclick="canniPage--;loadCannibal()">← Назад</button>`:''}
+    <span>стр. ${canniPage+1} из ${totalPages} (${canniPage*limit+1}–${Math.min((canniPage+1)*limit,d.total)} из ${d.total.toLocaleString()})</span>
+    ${canniPage<totalPages-1?`<button class="btn btn-sm btn-outline" onclick="canniPage++;loadCannibal()">Далее →</button>`:''}
+  </div>`:'';
+
+  el.innerHTML=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Запросы, по которым ранжируются 2+ страницы — всего: <b>${d.total.toLocaleString()}</b></div>${rows||'<div class="empty">Каннибализация не обнаружена</div>'}${pager}`;
 }
 
 // ── Upload ──
