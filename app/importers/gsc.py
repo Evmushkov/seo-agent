@@ -2,10 +2,19 @@ import csv
 import io
 import zipfile
 import logging
-from app.importers.base import BaseImporter
+from app.importers.base import BaseImporter, read_csv_text
 from app.db import get_conn
 
 logger = logging.getLogger(__name__)
+
+
+def _decode(raw: bytes) -> str:
+    for enc in ("utf-8-sig", "utf-8", "cp1251"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("cp1251", errors="replace")
 
 
 class GSCImporter(BaseImporter):
@@ -14,19 +23,19 @@ class GSCImporter(BaseImporter):
     def import_file(self, filepath: str) -> dict:
         queries, pages = [], []
 
-        with open(filepath, "rb") as f:
-            content = f.read()
-
         if filepath.endswith(".zip"):
+            with open(filepath, "rb") as f:
+                content = f.read()
             with zipfile.ZipFile(io.BytesIO(content)) as zf:
                 for name in zf.namelist():
-                    text = zf.read(name).decode("utf-8-sig")
+                    raw = zf.read(name)
+                    text = _decode(raw)
                     if "Queries" in name or "queries" in name:
                         queries = self._parse_queries(text)
                     elif "Pages" in name or "pages" in name:
                         pages = self._parse_pages(text)
         elif filepath.endswith(".csv"):
-            text = content.decode("utf-8-sig")
+            text = read_csv_text(filepath)
             if "Top queries" in text or "Query" in text:
                 queries = self._parse_queries(text)
             elif "Top pages" in text or "Page" in text:

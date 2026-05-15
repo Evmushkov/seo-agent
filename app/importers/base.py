@@ -6,6 +6,19 @@ from app.db import execute, get_conn
 logger = logging.getLogger(__name__)
 
 
+def read_csv_text(filepath: str) -> str:
+    """Read a CSV file trying UTF-8 (with/without BOM) then CP1251 fallback."""
+    with open(filepath, "rb") as f:
+        raw = f.read()
+    for enc in ("utf-8-sig", "utf-8", "cp1251"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    # last resort — replace bad bytes rather than crash
+    return raw.decode("cp1251", errors="replace")
+
+
 class BaseImporter:
     source: str = ""
 

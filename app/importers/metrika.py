@@ -1,7 +1,7 @@
 import csv
 import io
 import logging
-from app.importers.base import BaseImporter
+from app.importers.base import BaseImporter, read_csv_text
 from app.db import get_conn
 
 logger = logging.getLogger(__name__)
@@ -11,8 +11,7 @@ class MetrikaImporter(BaseImporter):
     source = "metrika"
 
     def import_file(self, filepath: str) -> dict:
-        with open(filepath, encoding="utf-8-sig") as f:
-            text = f.read()
+        text = read_csv_text(filepath)
 
         if "Страница входа" in text and "Источник трафика" in text:
             return self._import_landing_pages(text, filepath)
