@@ -151,8 +151,10 @@ async function recomputeTags(btn){
 }
 
 let _statusPollTimer=null;
+let _wasRunning=false;
 async function startStatusPolling(){
   stopStatusPolling();
+  _wasRunning=false;
   await pollStatus();
 }
 function stopStatusPolling(){
@@ -164,13 +166,17 @@ async function pollStatus(){
     const badge=document.getElementById('import-status-badge');
     if(!badge)return; // вкладка закрыта
     if(s.running){
+      _wasRunning=true;
       const phase={scanning:'сканирую файлы',computing_tags:'считаю теги'}[s.phase]||s.phase||'импорт';
       badge.innerHTML=`<span style="font-size:10px;color:var(--orange)">⟳ ${phase}...</span>`;
       _statusPollTimer=setTimeout(pollStatus,3000);
     }else if(s.phase==='computing_tags'||s.phase==='done'){
       badge.innerHTML=`<span style="font-size:10px;color:var(--green)">✓ готово</span>`;
-      // Перезагрузить дашборд чтобы показать свежие каунтеры
-      setTimeout(loadDash,1000);
+      // Обновляем дашборд только при переходе running→done
+      if(_wasRunning){
+        _wasRunning=false;
+        setTimeout(loadDash,1000);
+      }
     }else{
       badge.innerHTML='';
     }
