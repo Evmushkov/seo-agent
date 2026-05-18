@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from app.db import init_db, query, query_df, execute, get_conn
+from app.db import init_db, query, query_df, execute, get_conn, scalar
 from app.tagger import init_default_tags, compute_all_tags
 from app.importers.gsc import GSCImporter
 from app.importers.webmaster import WebmasterImporter
@@ -139,9 +139,9 @@ async def get_sources():
         sources[src] = {"uploads": count, "total_rows": total, "last_update": str(last)}
 
     # Total counts per table
-    sq_count = query("SELECT COUNT(*) FROM search_queries")[0][0]
-    pm_count = query("SELECT COUNT(*) FROM page_metrics")[0][0]
-    pt_count = query("SELECT COUNT(*) FROM position_tracking")[0][0]
+    sq_count = scalar("SELECT COUNT(*) FROM search_queries")
+    pm_count = scalar("SELECT COUNT(*) FROM page_metrics")
+    pt_count = scalar("SELECT COUNT(*) FROM position_tracking")
 
     return {
         "sources": sources,
@@ -273,7 +273,7 @@ async def get_queries(region: str = None, platform: str = None, search_engine: s
 
     # Total count
     count_sql = f"SELECT COUNT(DISTINCT query) FROM search_queries sq WHERE {' AND '.join(where[:len(where)])}"
-    total = query(count_sql, params[:len(where)-1] if params else [])[0][0]
+    total = scalar(count_sql, params[:len(where)-1] if params else [])
 
     return {"queries": results, "total": total, "limit": limit, "offset": offset}
 
@@ -298,10 +298,8 @@ async def get_cannibalization(limit: int = 50, offset: int = 0, q: str = None):
         q_filter = "AND qt.query ILIKE ?"
         params.append(f"%{q}%")
 
-    total = query(
-        f"SELECT COUNT(DISTINCT qt.query) FROM query_tags qt WHERE qt.tag_id = 'cannibal' {q_filter}",
-        params
-    )[0][0]
+    _sql = f"SELECT COUNT(DISTINCT qt.query) FROM query_tags qt WHERE qt.tag_id = 'cannibal' {q_filter}"
+    total = scalar(_sql, params)
 
     if total == 0:
         return {"cannibalization": [], "total": 0, "limit": limit, "offset": offset}
@@ -362,7 +360,7 @@ async def get_tags():
     rows = query("SELECT id, name, icon, description, formula, sort_order, is_active FROM tags ORDER BY sort_order")
     tags = []
     for tid, name, icon, desc, formula, order, active in rows:
-        count = query("SELECT COUNT(*) FROM query_tags WHERE tag_id = ?", [tid])[0][0]
+        count = scalar("SELECT COUNT(*) FROM query_tags WHERE tag_id = ?", [tid])
         tags.append({
             "id": tid, "name": name, "icon": icon, "description": desc,
             "formula": json.loads(formula), "sort_order": order,
@@ -406,8 +404,8 @@ async def dashboard():
         ORDER BY t.sort_order
     """)
 
-    total_queries = query("SELECT COUNT(DISTINCT query) FROM search_queries")[0][0]
-    total_pages = query("SELECT COUNT(DISTINCT url) FROM search_queries WHERE url IS NOT NULL AND url != ''")[0][0]
+    total_queries = scalar("SELECT COUNT(DISTINCT query) FROM search_queries")
+    total_pages = scalar("SELECT COUNT(DISTINCT url) FROM search_queries WHERE url IS NOT NULL AND url != ''")
 
     top_queries = query("""
         SELECT query, SUM(clicks) as clicks, AVG(position) as pos

@@ -1,19 +1,23 @@
 import duckdb
 import os
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
 DB_PATH = os.getenv("DB_PATH", "/data/seo.duckdb")
 _conn = None
+_lock = threading.Lock()
 
 
 def get_conn() -> duckdb.DuckDBPyConnection:
     global _conn
     if _conn is None:
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        _conn = duckdb.connect(DB_PATH)
-        logger.info(f"DuckDB connected: {DB_PATH}")
+        with _lock:
+            if _conn is None:
+                os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+                _conn = duckdb.connect(DB_PATH)
+                logger.info(f"DuckDB connected: {DB_PATH}")
     return _conn
 
 
@@ -127,21 +131,32 @@ def init_db():
 
 def query(sql: str, params=None):
     conn = get_conn()
-    if params:
-        return conn.execute(sql, params).fetchall()
-    return conn.execute(sql).fetchall()
+    with _lock:
+        if params:
+            return conn.execute(sql, params).fetchall()
+        return conn.execute(sql).fetchall()
 
 
 def query_df(sql: str, params=None):
     conn = get_conn()
-    if params:
-        return conn.execute(sql, params).fetchdf()
-    return conn.execute(sql).fetchdf()
+    with _lock:
+        if params:
+            return conn.execute(sql, params).fetchdf()
+        return conn.execute(sql).fetchdf()
 
 
 def execute(sql: str, params=None):
     conn = get_conn()
-    if params:
-        conn.execute(sql, params)
-    else:
-        conn.execute(sql)
+    with _lock:
+        if params:
+            conn.execute(sql, params)
+        else:
+            conn.execute(sql)
+
+
+def scalar(sql: str, params=None, default=0):
+    res = query(sql, params)
+    if not res:
+        logger.warning("scalar: empty result for: %.300s", sql.strip())
+        return default
+    return res[0][0]
