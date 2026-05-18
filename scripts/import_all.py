@@ -113,6 +113,10 @@ def main() -> int:
     parser.add_argument("--db",
                         default=os.environ.get("DB_PATH", "/data/seo.duckdb"),
                         help="DuckDB path (default: $DB_PATH or /data/seo.duckdb)")
+    parser.add_argument("--no-raw", action="store_true", default=False,
+                        help="after rebuild_query_unified, export compact DB without "
+                             "query_facts and atomically replace the original (use for "
+                             "production volume)")
     args = parser.parse_args()
 
     project_root = Path(args.project_path).resolve()
@@ -207,9 +211,31 @@ def main() -> int:
     rebuild_query_unified(con)
     logger.info("rebuild done in %.1fs", time.time() - t0)
 
-    con.close()
+    if args.no_raw:
+        db_path = args.db
+        tmp_path = db_path + ".new"
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        logger.info("--no-raw: exporting compact DB to %s", tmp_path)
+        from scripts.create_schema_v2 import create_schema
+        con_new = duckdb.connect(tmp_path)
+        create_schema(con_new)
+        for tbl in ("imports", "query_unified", "gsc_facts_by_appearance", "gsc_daily_totals"):
+            df = con.execute(f"SELECT * FROM {tbl}").df()
+            con_new.register("_t", df)
+            con_new.execute(f"INSERT INTO {tbl} SELECT * FROM _t")
+            con_new.unregister("_t")
+            logger.info("  copied %s: %d rows", tbl, len(df))
+        con_new.close()
+        con.close()
+        os.rename(tmp_path, db_path)
+        logger.info("--no-raw: replaced %s", db_path)
+    else:
+        con.close()
 
     _print_summary(summary)
+    if args.no_raw:
+        print("note: query_facts excluded, DB compacted (--no-raw)")
     errors = sum(1 for r in summary if r["status"].startswith("error"))
     return 1 if errors else 0
 
