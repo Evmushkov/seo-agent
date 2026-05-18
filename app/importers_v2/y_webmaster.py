@@ -67,6 +67,17 @@ def _import_format_a(folder: Path, import_id: int, domain: str,
         melted["metric"] = melted["raw_metric"].map(_METRIC_MAP_A)
         melted = melted.dropna(subset=["metric"])
 
+        # Keep only (Query, Url, date) where shows > 0 — zero means no data.
+        shows = (
+            melted[melted["raw_metric"] == "shows"][["Query", "Url", "date", "value"]]
+            .rename(columns={"value": "_shows"})
+        )
+        melted = melted.merge(shows, on=["Query", "Url", "date"], how="left")
+        melted = melted[melted["_shows"] > 0].drop(columns=["_shows"])
+
+        # position == 0 is invalid even when impressions > 0
+        melted = melted[~((melted["raw_metric"] == "position") & (melted["value"] == 0))]
+
         # ctr is stored as percentage in xlsx → convert to fraction
         ctr_mask = melted["metric"] == "ctr"
         melted.loc[ctr_mask, "value"] = melted.loc[ctr_mask, "value"] / 100
@@ -97,9 +108,37 @@ def _import_format_a(folder: Path, import_id: int, domain: str,
     return total
 
 
+def _build_valid_pairs_b(folder: Path, base: str) -> set:
+    """Return set of (url, date_str) where impressions > 0."""
+    imp_path = folder / "impressions.csv"
+    if not imp_path.exists():
+        return set()
+    df = read_csv_text(imp_path)
+    path_col = df.columns[0]
+    date_cols = [c for c in df.columns[1:] if re.match(r'\d{4}-\d{2}-\d{2}', str(c))]
+    valid = set()
+    for _, row in df.iterrows():
+        url = _normalise_url(str(row[path_col]), base)
+        for dc in date_cols:
+            val = row[dc]
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                continue
+            try:
+                if float(val) > 0:
+                    valid.add((url, dc))
+            except (ValueError, TypeError):
+                pass
+    return valid
+
+
 def _import_format_b(folder: Path, import_id: int, domain: str,
                      con: duckdb.DuckDBPyConnection) -> int:
     base = domain.rstrip("/")
+
+    # Pre-compute (url, date) pairs that have impressions > 0
+    valid_pairs = _build_valid_pairs_b(folder, base)
+    logger.info("  format B: %d valid (url, date) pairs with impressions>0", len(valid_pairs))
+
     total = 0
     for fname, (metric, is_pct) in _FORMAT_B_FILES.items():
         path = folder / fname
@@ -115,12 +154,18 @@ def _import_format_b(folder: Path, import_id: int, domain: str,
         for _, row in df.iterrows():
             url = _normalise_url(str(row[path_col]), base)
             for dc in date_cols:
+                # Skip days with no impressions
+                if (url, dc) not in valid_pairs:
+                    continue
                 val = row[dc]
                 if val is None or (isinstance(val, float) and pd.isna(val)):
                     continue
                 try:
                     v = float(val)
                 except (ValueError, TypeError):
+                    continue
+                # position == 0 is invalid
+                if metric == "position" and v == 0:
                     continue
                 if is_pct:
                     v /= 100
