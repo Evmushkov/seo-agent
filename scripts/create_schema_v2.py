@@ -145,13 +145,23 @@ CREATE TABLE IF NOT EXISTS query_unified (
 """
 
 
-def create_schema(db_path: str) -> None:
-    print(f"БД: {db_path}")
-    con = duckdb.connect(db_path)
+def create_schema(con: duckdb.DuckDBPyConnection) -> None:
+    """Apply DDL to an already-open DuckDB connection (idempotent)."""
     for stmt in _DDL.split(";"):
         stmt = stmt.strip()
         if stmt:
             con.execute(stmt)
+
+
+if __name__ == "__main__":
+    db_path = (
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else os.environ.get("DATABASE_PATH", "./tempus.duckdb")
+    )
+    print(f"БД: {db_path}")
+    con = duckdb.connect(db_path)
+    create_schema(con)
     print("Схема создана (идемпотентно).\n")
 
     tables = [
@@ -167,12 +177,3 @@ def create_schema(db_path: str) -> None:
         print()
 
     con.close()
-
-
-if __name__ == "__main__":
-    db_path = (
-        sys.argv[1]
-        if len(sys.argv) > 1
-        else os.environ.get("DATABASE_PATH", "./tempus.duckdb")
-    )
-    create_schema(db_path)
