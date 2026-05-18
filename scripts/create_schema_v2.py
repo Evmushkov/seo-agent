@@ -3,7 +3,7 @@
 Usage:
     python3 scripts/create_schema_v2.py [db_path]
 
-Default db_path: value of DATABASE_PATH env var, or ./tempus.duckdb.
+Default db_path: value of DB_PATH env var, or /data/seo.duckdb.
 The legacy 'queries' table is never touched.
 """
 
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     db_path = (
         sys.argv[1]
         if len(sys.argv) > 1
-        else os.environ.get("DATABASE_PATH", "./tempus.duckdb")
+        else os.environ.get("DB_PATH", "/data/seo.duckdb")
     )
     print(f"БД: {db_path}")
     con = duckdb.connect(db_path)

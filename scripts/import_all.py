@@ -111,8 +111,8 @@ def main() -> int:
     parser.add_argument("project_path",
                         help="Path to project folder, e.g. data/uploads/tempus.ru/")
     parser.add_argument("--db",
-                        default=os.environ.get("DATABASE_PATH", "./tempus.duckdb"),
-                        help="DuckDB path (default: $DATABASE_PATH or ./tempus.duckdb)")
+                        default=os.environ.get("DB_PATH", "/data/seo.duckdb"),
+                        help="DuckDB path (default: $DB_PATH or /data/seo.duckdb)")
     args = parser.parse_args()
 
     project_root = Path(args.project_path).resolve()
