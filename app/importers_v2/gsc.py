@@ -1,6 +1,5 @@
 """Importer for Google Search Console exports."""
 
-import hashlib
 import json
 import logging
 from pathlib import Path
@@ -9,6 +8,7 @@ import duckdb
 import pandas as pd
 
 from .base import parse_folder_metadata, read_csv_text, rebuild_query_unified
+from ._hashing import folder_hash
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +27,6 @@ def _ctr(val) -> float | None:
     if s.endswith("%"):
         return float(s[:-1]) / 100
     return float(s)
-
-
-def _folder_hash(folder: Path) -> str:
-    sha = hashlib.sha256()
-    for f in sorted(folder.glob("*.csv")):
-        sha.update(f.name.encode())
-        sha.update(f.read_bytes())
-    return sha.hexdigest()
 
 
 def _insert_facts(rows: list, con: duckdb.DuckDBPyConnection) -> None:
@@ -150,7 +142,7 @@ def import_folder(folder: Path, con: duckdb.DuckDBPyConnection) -> int:
             ensure_ascii=False,
         )
 
-    file_hash = _folder_hash(folder)
+    file_hash = folder_hash(folder)
 
     # Idempotency check
     existing = con.execute(

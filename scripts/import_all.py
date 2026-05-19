@@ -5,7 +5,6 @@ Usage:
 """
 
 import argparse
-import hashlib
 import importlib
 import logging
 import os
@@ -16,6 +15,7 @@ from pathlib import Path
 import duckdb
 
 from app.importers_v2.base import parse_folder_metadata, rebuild_query_unified
+from app.importers_v2._hashing import folder_hash
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -30,20 +30,6 @@ _IMPORTER_PATHS = {
     "topvisor":         "app.importers_v2.topvisor",
     "y.webmaster":      "app.importers_v2.y_webmaster",
 }
-
-
-def _folder_hash(folder: Path) -> str:
-    """sha256 over all non-hidden files (sorted by name) including filenames.
-
-    Covers: content changes, added/removed files, renames.
-    For folders with a single large xlsx (~200MB) this adds ~2s per check —
-    acceptable given imports themselves take minutes.
-    """
-    sha = hashlib.sha256()
-    for f in sorted(f for f in folder.iterdir() if f.is_file() and not f.name.startswith(".")):
-        sha.update(f.name.encode())
-        sha.update(f.read_bytes())
-    return sha.hexdigest()
 
 
 def _find_import_folders(project_root: Path):
@@ -162,7 +148,7 @@ def main() -> int:
         period  = f"{meta['date_from']}_{meta['date_to']}"
         n_files = sum(1 for f in folder.iterdir()
                       if f.is_file() and not f.name.startswith("."))
-        fhash   = _folder_hash(folder)
+        fhash   = folder_hash(folder)
 
         # Idempotency check
         if _already_imported(con, meta, fhash):
@@ -180,14 +166,23 @@ def main() -> int:
             n_facts = importer_mods[source_name].import_folder(folder, con)
             elapsed = round(time.time() - t0, 1)
 
-            # Store hash for future idempotency checks
-            con.execute(
-                "UPDATE imports SET file_hash=? "
+            # Store hash for future idempotency checks.
+            # Workaround DuckDB 1.1.3: UPDATE on a table with DEFAULT nextval() PK
+            # and file_hash inside a UNIQUE INDEX triggers a PK violation when the
+            # WHERE clause references that index. SELECT the id first, then UPDATE
+            # by PK only to avoid the internal DELETE+reinsert path.
+            _id_row = con.execute(
+                "SELECT id FROM imports "
                 "WHERE project=? AND source=? AND region=? AND platform=? "
                 "  AND date_from=? AND date_to=? AND file_hash IS NULL",
-                [fhash, meta["project"], meta["source"], meta["region"],
+                [meta["project"], meta["source"], meta["region"],
                  meta["platform"], meta["date_from"], meta["date_to"]],
-            )
+            ).fetchone()
+            if _id_row:
+                con.execute(
+                    "UPDATE imports SET file_hash=? WHERE id=?",
+                    [fhash, _id_row[0]],
+                )
 
             logger.info("imported %s → %d facts in %.1fs", label, n_facts, elapsed)
             summary.append({

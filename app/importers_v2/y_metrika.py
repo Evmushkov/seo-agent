@@ -45,7 +45,8 @@ def _parse_time(val) -> float | None:
         return None
 
 
-def import_folder(folder: Path, con: duckdb.DuckDBPyConnection) -> int:
+def import_folder(folder: Path, con: duckdb.DuckDBPyConnection,
+                  file_hash: str | None = None) -> int:
     """Import one Yandex.Metrika export folder (landing_pages.csv only).
 
     Returns the number of rows inserted into query_facts.
@@ -55,11 +56,11 @@ def import_folder(folder: Path, con: duckdb.DuckDBPyConnection) -> int:
 
     row = con.execute(
         "INSERT INTO imports "
-        "(project, domain, source, region, platform, date_from, date_to, folder_path) "
-        "VALUES (?,?,?,?,?,?,?,?) RETURNING id",
+        "(project, domain, source, region, platform, date_from, date_to, folder_path, file_hash) "
+        "VALUES (?,?,?,?,?,?,?,?,?) RETURNING id",
         [meta["project"], meta["domain"], meta["source"],
          meta["region"], meta["platform"], meta["date_from"], meta["date_to"],
-         meta["folder_path"]],
+         meta["folder_path"], file_hash],
     ).fetchone()
     import_id = row[0]
     logger.info("import_id=%d  folder=%s", import_id, folder.name)
