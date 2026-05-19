@@ -81,6 +81,7 @@ def import_folder(folder: Path, con: duckdb.DuckDBPyConnection,
     """
     folder = Path(folder)
     meta = parse_folder_metadata(folder)
+    file_hash = file_hash or folder_hash(folder)
 
     row = con.execute(
         "INSERT INTO imports "

@@ -191,6 +191,7 @@ def import_folder(folder: Path, con: duckdb.DuckDBPyConnection,
     """
     folder = Path(folder)
     meta = parse_folder_metadata(folder)
+    file_hash = file_hash or folder_hash(folder)
     domain = meta["domain"]
 
     has_xlsx = bool(list(folder.glob("*.xlsx")))

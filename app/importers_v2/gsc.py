@@ -124,7 +124,8 @@ def _import_appearance(path: Path, import_id: int, con: duckdb.DuckDBPyConnectio
         )
 
 
-def import_folder(folder: Path, con: duckdb.DuckDBPyConnection) -> int:
+def import_folder(folder: Path, con: duckdb.DuckDBPyConnection,
+                  file_hash: str | None = None) -> int:
     """Import one GSC export folder into the DB.
 
     Returns the number of rows inserted into query_facts.
@@ -142,7 +143,7 @@ def import_folder(folder: Path, con: duckdb.DuckDBPyConnection) -> int:
             ensure_ascii=False,
         )
 
-    file_hash = folder_hash(folder)
+    file_hash = file_hash or folder_hash(folder)
 
     # Idempotency check
     existing = con.execute(

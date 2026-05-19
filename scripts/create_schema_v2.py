@@ -18,6 +18,7 @@ CREATE SEQUENCE IF NOT EXISTS seq_imports_id;
 CREATE SEQUENCE IF NOT EXISTS seq_query_facts_id;
 CREATE SEQUENCE IF NOT EXISTS seq_gsc_app_id;
 CREATE SEQUENCE IF NOT EXISTS seq_gsc_dt_id;
+CREATE SEQUENCE IF NOT EXISTS seq_qu_id;
 
 -- ── imports ───────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS imports (
@@ -94,6 +95,7 @@ CREATE INDEX IF NOT EXISTS idx_gsc_dt_date   ON gsc_daily_totals(date);
 
 -- ── query_unified ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS query_unified (
+    id                        INTEGER PRIMARY KEY DEFAULT nextval('seq_qu_id'),
     project                   TEXT NOT NULL,
     query                     TEXT,
     url                       TEXT,
@@ -142,6 +144,34 @@ CREATE TABLE IF NOT EXISTS query_unified (
     -- поэтому уникальность контролируется индексом, а не PK.
     UNIQUE (project, query, url, period_from, period_to, region, platform, traffic_source)
 );
+
+-- ── tags_v2 ───────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS tags_v2 (
+    id          VARCHAR     PRIMARY KEY,
+    name        VARCHAR     NOT NULL,
+    icon        VARCHAR     DEFAULT '🏷️',
+    description VARCHAR,
+    formula     JSON        NOT NULL,
+    color       VARCHAR,
+    sort_order  INTEGER     DEFAULT 0,
+    is_active   BOOLEAN     DEFAULT TRUE,
+    created_at  TIMESTAMP   DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ── query_unified_tags ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS query_unified_tags (
+    project     VARCHAR     NOT NULL,
+    query       VARCHAR     NOT NULL,
+    tag_id      VARCHAR     NOT NULL REFERENCES tags_v2(id),
+    computed_at TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    meta        JSON,
+    PRIMARY KEY (project, query, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_qut_tag
+    ON query_unified_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_qut_project_query
+    ON query_unified_tags(project, query);
 """
 
 
@@ -170,6 +200,8 @@ if __name__ == "__main__":
         "gsc_facts_by_appearance",
         "gsc_daily_totals",
         "query_unified",
+        "tags_v2",
+        "query_unified_tags",
     ]
     for t in tables:
         print(f"── DESCRIBE {t} ──")

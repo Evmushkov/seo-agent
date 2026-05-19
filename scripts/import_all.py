@@ -163,26 +163,8 @@ def main() -> int:
         # Run import (rebuild suppressed inside)
         t0 = time.time()
         try:
-            n_facts = importer_mods[source_name].import_folder(folder, con)
+            n_facts = importer_mods[source_name].import_folder(folder, con, file_hash=fhash)
             elapsed = round(time.time() - t0, 1)
-
-            # Store hash for future idempotency checks.
-            # Workaround DuckDB 1.1.3: UPDATE on a table with DEFAULT nextval() PK
-            # and file_hash inside a UNIQUE INDEX triggers a PK violation when the
-            # WHERE clause references that index. SELECT the id first, then UPDATE
-            # by PK only to avoid the internal DELETE+reinsert path.
-            _id_row = con.execute(
-                "SELECT id FROM imports "
-                "WHERE project=? AND source=? AND region=? AND platform=? "
-                "  AND date_from=? AND date_to=? AND file_hash IS NULL",
-                [meta["project"], meta["source"], meta["region"],
-                 meta["platform"], meta["date_from"], meta["date_to"]],
-            ).fetchone()
-            if _id_row:
-                con.execute(
-                    "UPDATE imports SET file_hash=? WHERE id=?",
-                    [fhash, _id_row[0]],
-                )
 
             logger.info("imported %s → %d facts in %.1fs", label, n_facts, elapsed)
             summary.append({
